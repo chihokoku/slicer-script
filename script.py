@@ -15,6 +15,7 @@ import vtk
 import pandas as pd
 import numpy as np
 import scipy.ndimage
+import math
 from scipy.interpolate import interp1d
 import straight_line_equation
 
@@ -165,8 +166,32 @@ def rotate_slice_in_place():
         volumeArray = slicer.util.arrayFromVolume(labelmapVolumeNode)
 
         for i in range(1, len(new_z_points)):
+            
             slice_value = new_z_points[i]
-            # 3. z=-160というras座標系(脛骨座標系)の値がijk座標系のsegmentationの何スライス目に当たるかを計算
+
+            # あるz座標値から直線上の点を求める
+            straight_line_x_points, straight_line_y_points= straight_line_equation.find_xy_at_z(slice_value,base_point, direction_vec)
+            # print("\n直線上の点：",straight_line_points)
+
+            # 髄腔中心点と直線上の点とのベクトルの成す角度を計算
+            # 1. ABベクトルの成分を計算
+            #    ベクトルの成分 = (終点のx - 始点のx, 終点のy - 始点のy)
+            vx = straight_line_x_points - spline_x_points[i]
+            vy = straight_line_y_points - spline_y_points[i]
+            
+            # 2. ベクトルの成分(vx, vy)から角度を計算
+            #    atan2は、ベクトルの向きから正しい象限の角度を返してくれる
+            angle_rad = math.atan2(vy, vx)
+            
+            # 3. ラジアンを度数法に変換して返す
+            angle_deg = math.degrees(angle_rad)
+            print("\n髄腔点と直線の角度：",angle_rad)
+            # ***********************************
+            # ↑↑↑↑角度計算値が小さすぎる！！！！
+            # ***********************************
+
+
+            # 3. あるz座標値からsegmentationの何スライス目に当たるかを計算
             bounds = [0.0] * 6
             segmentationNode.GetRASBounds(bounds)
             if not (bounds[4] <= slice_value <= bounds[5]):
@@ -193,7 +218,7 @@ def rotate_slice_in_place():
 
             # 4. スライスを回転
             print("スライスを回転中...")
-            slice_2d = volumeArray[k_slice_index, :, :]
+            slice_2d = volumeArray[k_slice_index, :, :]#ここでスライス画像を取得
             rotated_slice_2d = scipy.ndimage.rotate(slice_2d, ROTATION_ANGLE_DEG, reshape=False, mode='constant', cval=0)
             volumeArray[k_slice_index, :, :] = rotated_slice_2d
             slicer.util.arrayFromVolumeModified(labelmapVolumeNode)
