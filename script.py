@@ -9,7 +9,7 @@ if script_directory not in sys.path:
     sys.path.append(script_directory)
 # --- 前処理ここまで ---
 
-import slicer
+import slicer 
 import qt
 import vtk
 import pandas as pd
@@ -18,11 +18,6 @@ import scipy.ndimage
 import math
 from scipy.interpolate import interp1d
 import straight_line_equation
-
-# --- 設定項目 ---
-TARGET_Z_MM = -160.0  # 回転させたいスライスのZ座標 (mm)
-ROTATION_ANGLE_DEG = 90  # 回転角度（度）
-# --- 設定はここまで ---
 
 def rotate_slice_in_place():
     # 1. 準備：編集対象のセグメンテーションノードを取得
@@ -166,24 +161,24 @@ def rotate_slice_in_place():
         volumeArray = slicer.util.arrayFromVolume(labelmapVolumeNode)
 
         for i in range(1, len(new_z_points)):
-            
+            # Z座標値が格納されている変数
             slice_value = new_z_points[i]
-
             # あるz座標値から直線上の点を求める
             straight_line_x_points, straight_line_y_points= straight_line_equation.find_xy_at_z(slice_value,base_point, direction_vec)
-
+            # *******************************
             # 髄腔中心点と直線上の点とのベクトルの成す角度を計算
+            # *******************************
             # 1. ABベクトルの成分を計算
             # ベクトルの成分 = (終点のx - 始点のx, 終点のy - 始点のy)
-            vx = straight_line_x_points - spline_x_points[i]
-            vy = straight_line_y_points - spline_y_points[i]
+            straight_line_vx = straight_line_x_points - spline_x_points[i]
+            straight_line_vy = straight_line_y_points - spline_y_points[i]
             # 2. ベクトルの成分(vx, vy)から角度を計算
             # atan2は、ベクトルの向きから正しい象限の角度を返してくれる
-            angle_rad = math.atan2(vy, vx)
+            straight_line_angle_rad = math.atan2(straight_line_vy, straight_line_vx)
             
             # 3. ラジアンを度数法に変換して返す
-            angle_deg = math.degrees(angle_rad)
-            print("\n髄腔点と直線の角度：",angle_deg)
+            straight_line_angle_deg = math.degrees(straight_line_angle_rad)
+            print("髄腔点と直線の角度：",straight_line_angle_deg)
             print("z座標値：",slice_value)
             print("スプライン補間した髄腔中心点：",spline_x_points[i],spline_y_points[i])
             print("直線上の点:",straight_line_x_points, straight_line_y_points)
@@ -194,81 +189,69 @@ def rotate_slice_in_place():
             segmentationNode.GetRASBounds(bounds)
             if not (bounds[4] <= slice_value <= bounds[5]):
                 raise ValueError(f"エラー: Z={slice_value}mm はモデルのZ方向の範囲外です。")
-                
             r_center = (bounds[0] + bounds[1]) / 2.0
             a_center = (bounds[2] + bounds[3]) / 2.0
             rasPoint = [r_center, a_center, slice_value, 1]
-            
             ijkToRasMatrix = vtk.vtkMatrix4x4()
             labelmapVolumeNode.GetIJKToRASMatrix(ijkToRasMatrix)
             rasToIjkMatrix = vtk.vtkMatrix4x4()#ras座標系からijk座標系に変換する翻訳機のようなものを作成
             rasToIjkMatrix.DeepCopy(ijkToRasMatrix)
             rasToIjkMatrix.Invert()
-            
             ijkPoint = rasToIjkMatrix.MultiplyPoint(rasPoint)
             k_slice_index = int(round(ijkPoint[2]))#ras座標の値がsegmentationの何スライス目か判定
-            
             imageData = labelmapVolumeNode.GetImageData()
             dims = imageData.GetDimensions()
             if not (0 <= k_slice_index < dims[2]):
                 raise ValueError(f"エラー: Z={slice_value}mm は計算の結果、範囲外のインデックスになりました。")
             # print(f"Z={slice_value}mm は {k_slice_index} 番目のスライスに相当します。")
-            print("---------------------------")
 
             slice_2d = volumeArray[k_slice_index, :, :]#ここでスライス画像を取得
             
             # ***********************************************
             # 取得したスライス断面において前凌点を探索
             # ***********************************************
-            # 基準点AのRAS座標を、ラベルマップのIJK座標（ピクセル番地）に変換
-            # pointA_ras_vtk = [spline_x_points[i], spline_y_points[i], slice_value, 1]
-            # pointA_ijk_vtk = rasToIjkMatrix.MultiplyPoint(pointA_ras_vtk)
-
-            # k_slice_index = int(round(pointA_ijk_vtk[2]))
+            # 基準点(髄腔中心点)のRAS座標を、ラベルマップのIJK座標（ピクセル番地）に変換
+            pointA_ras_vtk = [spline_x_points[i], spline_y_points[i], slice_value, 1]
+            pointA_ijk_vtk = rasToIjkMatrix.MultiplyPoint(pointA_ras_vtk)
             # # 2Dスライス平面上での基準点Aのピクセル座標 [J, I]
-            # point_a_pixel = np.array([pointA_ijk_vtk[1], pointA_ijk_vtk[0]])
+            point_a_pixel = np.array([pointA_ijk_vtk[1], pointA_ijk_vtk[0]])
+            # 4a. 形状を構成する全ピクセルの座標リスト [J, I] を取得
+            shape_pixel_coords = np.argwhere(slice_2d > 0)
+            if shape_pixel_coords.size == 0:
+                raise ValueError(f"Z={slice_value}mmのスライス上にセグメントが見つかりません。")
+            # 4b. 各ピクセルと点Aとの距離の2乗を計算 (NumPyで一括計算)
+            distances_sq = np.sum((shape_pixel_coords - point_a_pixel)**2, axis=1)
+            # 4c. 距離が最大となる点のインデックスを見つける
+            farthest_pixel_index_in_list = np.argmax(distances_sq)
+            # 4d. 最遠点のピクセル座標 [J, I] を取得
+            farthest_pixel_ji = shape_pixel_coords[farthest_pixel_index_in_list]   
+            # 5. 最遠点のピクセル座標(IJK)をワールド座標(RAS)に変換
+            farthest_point_ijk_vtk = [farthest_pixel_ji[1], farthest_pixel_ji[0], k_slice_index, 1] # I, J, K, 1 の順
+            farthest_point_ras_vtk = ijkToRasMatrix.MultiplyPoint(farthest_point_ijk_vtk)
+            farthest_point_ras = np.array(farthest_point_ras_vtk[:3])
+            #表示の関係で前後が反転しているので、x,y座標にマイナスをかけて新しい変数に格納
+            farthest_point_ras[:2] *= -1
+            tibia_point_ras = farthest_point_ras
+            print("脛骨前凌の点：",tibia_point_ras)
+            # ベクトルの成分 = (前凌のx - 髄腔のx, 前凌のy - 髄腔のy)
+            tibia_vx = tibia_point_ras[0] - spline_x_points[i]
+            tibia_vy = tibia_point_ras[1] - spline_y_points[i]
+            # 2. ベクトルの成分(vx, vy)から角度を計算
+            # atan2は、ベクトルの向きから正しい象限の角度を返してくれる
+            tibia_angle_rad = math.atan2(tibia_vy, tibia_vx)
+            # 3. ラジアンを度数法に変換して返す
+            tibia_angle_deg = math.degrees(tibia_angle_rad)
+            print("髄腔点と前凌の角度：",tibia_angle_deg)
 
-            # # 4. スライスデータを取得し、最遠点を探す
-            # volumeArray = slicer.util.arrayFromVolume(labelmapVolumeNode)
-            # slice_2d = volumeArray[k_slice_index, :, :]
-
-            # # 4a. 形状を構成する全ピクセルの座標リスト [J, I] を取得
-            # shape_pixel_coords = np.argwhere(slice_2d > 0)
-            # if shape_pixel_coords.size == 0:
-            #     raise ValueError(f"Z={TARGET_Z_MM}mmのスライス上にセグメントが見つかりません。")
-
-            # # 4b. 各ピクセルと点Aとの距離の2乗を計算 (NumPyで一括計算)
-            # distances_sq = np.sum((shape_pixel_coords - point_a_pixel)**2, axis=1)
-
-            # # 4c. 距離が最大となる点のインデックスを見つける
-            # farthest_pixel_index_in_list = np.argmax(distances_sq)
-            
-            # # 4d. 最遠点のピクセル座標 [J, I] を取得
-            # farthest_pixel_ji = shape_pixel_coords[farthest_pixel_index_in_list]
-            
-            # print(f"\n--- 計算結果 ---")
-            # print(f"基準点Aのピクセル座標 (J, I): ({point_a_pixel[0]:.2f}, {point_a_pixel[1]:.2f})")
-            # print(f"最遠点Bのピクセル座標 (J, I): ({farthest_pixel_ji[0]}, {farthest_pixel_ji[1]})")
-
-            # # 5. 最遠点のピクセル座標(IJK)をワールド座標(RAS)に変換
-            # farthest_point_ijk_vtk = [farthest_pixel_ji[1], farthest_pixel_ji[0], k_slice_index, 1] # I, J, K, 1 の順
-            # farthest_point_ras_vtk = ijkToRasMatrix.MultiplyPoint(farthest_point_ijk_vtk)
-            # farthest_point_ras = np.array(farthest_point_ras_vtk[:3])
-
-            # print(f"最遠点Bのワールド座標 (R, A, S) [mm]: {farthest_point_ras}")
-            
-            # # 6. 結果をSlicerに表示して確認
-            # resultPointsNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "FarthestPointResult")
-            # resultPointsNode.AddControlPoint(POINT_A_RAS, "Point A (基準点)")
-            # resultPointsNode.AddControlPoint(farthest_point_ras, "Point B (最遠点)")
-            # # 表示設定
-            # displayNode = resultPointsNode.GetDisplayNode()
-            # displayNode.SetGlyphScale(2.0)
-            # displayNode.SetTextScale(4.0)
-
-
-            # 4. スライスを回転
-            rotated_slice_2d = scipy.ndimage.rotate(slice_2d, ROTATION_ANGLE_DEG, reshape=False, mode='constant', cval=0)
+            # *****************************  
+            # 回転中心を決めてなかった！！
+            # *****************************  
+            # 4. スライスを回転させる
+            ROTATION_DEG = tibia_angle_deg - straight_line_angle_deg
+            round_ROTATION_DEG = round(ROTATION_DEG, 2)
+            print("回転させる角度：",round_ROTATION_DEG)
+            print("---------------------------")
+            rotated_slice_2d = scipy.ndimage.rotate(slice_2d, round_ROTATION_DEG, reshape=False, mode='constant', cval=0)
             volumeArray[k_slice_index, :, :] = rotated_slice_2d
             slicer.util.arrayFromVolumeModified(labelmapVolumeNode)
 
