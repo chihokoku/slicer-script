@@ -8,3 +8,8 @@
    pip_install('pandas openpyxl')
    下記が出れば完了
    Successfully installed et-xmlfile-2.0.0 openpyxl-3.1.5 pandas-2.3.0 pytz-2025.2 tzdata-2025.2
+
+##　注意
+
+- エクスポートする際は必ず stl 形式で出力(obj 形式だと変更前のモデルが残ってしまうため)
+- 最初の実行では落ちることがよくある

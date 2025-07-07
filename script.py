@@ -14,24 +14,69 @@ import qt
 import vtk
 import pandas as pd
 import numpy as np
+from scipy.ndimage import affine_transform
 import scipy.ndimage
 import math
 from scipy.interpolate import interp1d
 import straight_line_equation
 
-def rotate_slice_in_place():
+def message_box():
+    # *********************************
+    # ダイアログに表示するメッセージ
+    # ********************************
+    # 1. メッセージボックスのインスタンスを作成
+    msgBox = qt.QMessageBox()
+    msgBox.setText("どちらの脚ですか？？")
+    msgBox.setWindowTitle("処理の確認")
+    # 2. カスタムボタンを追加
+    yesButton = msgBox.addButton("右脚", qt.QMessageBox.YesRole)
+    noButton = msgBox.addButton("左脚", qt.QMessageBox.NoRole)
+    # 3. ダイアログを実行
+    msgBox.exec_()
+    # 4. 押されたボタンに応じて処理を分岐
+    if msgBox.clickedButton() == yesButton:
+        tibia_type = 0
+        rotate_slice_in_place(tibia_type)
+    else:
+        print("")
+        tibia_type = 1
+        rotate_slice_in_place(tibia_type)
+       
+
+
+def rotate_slice_in_place(tibia_type):
+    print('どちらの脛骨？：',tibia_type)
     # 1. 準備：編集対象のセグメンテーションノードを取得
     segmentEditorWidget = slicer.modules.segmenteditor.widgetRepresentation().self().editor
     segmentationNode = segmentEditorWidget.mrmlSegmentEditorNode().GetSegmentationNode()
-
     if not segmentationNode:
         print("エラー: Segment Editorでセグメンテーションが選択されていません。")
-        return
-        
+        return 
     print(f"処理対象ノード: '{segmentationNode.GetName()}'")
-    
     # 処理を一つの塊としてSlicerに通知（アンドゥ機能のため）
     segmentationNode.StartModify()
+
+
+    # **************************************
+    # sclicerのapiを使って回転させるプログラム
+    # **************************************
+    ROTATION_ANGLE_DEG = 180
+    # 2. VTKを使って変換ルール(Transform)を作成
+    transform = vtk.vtkTransform()
+    # 原点を中心にZ軸周りで回転
+    # 平行移動の処理を省くことで、回転の中心はデフォルトで原点(0,0,0)になる
+    transform.RotateZ(ROTATION_ANGLE_DEG)
+    # # 3. 作成した変換を、新しいTransformノードとしてシーンに追加
+    transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "MyRotationTransform")
+    transformNode.SetMatrixTransformToParent(transform.GetMatrix())
+    # # 4. モデルに、このTransformノードを一時的に適用
+    segmentationNode.SetAndObserveTransformNodeID(transformNode.GetID())
+    # # 5. 【最重要】変換をモデルのジオメトリに「焼き付け(Harden)」て、恒久的な変更にする
+    print("変換をモデルに焼き付けています...")
+    logic = slicer.vtkSlicerTransformLogic()
+    logic.hardenTransform(segmentationNode)
+    # print(f"回転が完了しました")
+
 
     # ユーザーにExcelファイルを選択させる
     # あなたの環境に合わせて、返り値を一つの変数で受け取る
@@ -41,10 +86,13 @@ def rotate_slice_in_place():
         print("ファイルが選択されませんでした。")
         return
     print(f"選択されたファイル: {file_path}")
-
     # Excelファイルを読み込む
     df = pd.read_excel(file_path)
 
+
+    # ***************************
+    # 髄腔中心点をスプライン補間するプログラム
+    # ***************************
     # データがあるかチェック
     # 2,3,4列目のデータをX,Y,Z座標として取得し,11行目 = インデックス10と列数(9列目 = インデックス8)があるかチェック
     if df.shape[1] < 4:
@@ -53,48 +101,37 @@ def rotate_slice_in_place():
     coords_data = df.iloc[:, [1, 2, 3]]
     # 分かりやすいように列名を'x', 'y', 'z'に設定
     coords_data.columns = ['x', 'y', 'z']
-
     # 不正なデータ（数値でないもの）を削除
     coords_data = coords_data.apply(pd.to_numeric, errors='coerce').dropna()
     if coords_data.empty:
         raise ValueError("有効な数値座標データが見つかりませんでした。")
-    
-    # ***************************
-    # 髄腔中心点をスプライン補間するプログラム
-    # ***************************
     # 【重要】スプライン補間を行う前に、必ずZ座標でデータを並び替える
     sorted_coords = coords_data.sort_values(by='z').to_numpy()
-
     # NumPy配列に変換
     x_coords = sorted_coords[:, 0]
     y_coords = sorted_coords[:, 1]
     z_coords = sorted_coords[:, 2]
     print(f"{len(z_coords)}個の有効な3D座標点を取得しました。")
-
     # 2b. Z座標が最小/最大の行の座標を取得して表示
     # Z座標が最小値を持つ行のインデックス(元のExcelの行番号ではない)を取得
     min_z_row_index = coords_data['z'].idxmin()
     # Z座標が最大値を持つ行のインデックスを取得
     max_z_row_index = coords_data['z'].idxmax()
-
     # インデックスを使って、該当する行のデータを取得
     min_z_row = coords_data.loc[min_z_row_index]
     max_z_row = coords_data.loc[max_z_row_index]
     print("\n--- 元データ内のZ座標 最小/最大情報 ---")
     print(f"Z座標が最小の行の座標 (X, Y, Z): ({min_z_row['x']}, {min_z_row['y']}, {min_z_row['z']})")
     print(f"Z座標が最大の行の座標 (X, Y, Z): ({max_z_row['x']}, {max_z_row['y']}, {max_z_row['z']})")
-
     # 3. ここで3次スプライン補間する曲線の方程式を求める
     # Z座標を基準に、XとYがどう変化するかをそれぞれ補間する
     f_x = interp1d(z_coords, x_coords, kind='cubic', fill_value="extrapolate")
     f_y = interp1d(z_coords, y_coords, kind='cubic', fill_value="extrapolate")
-
     # 4. 元のデータの最小Z座標と最大Z座標を取得Z軸に対して1mm間隔の点列リストを作成
     z_min = z_coords.min()
     z_max = z_coords.max()
     # ↓↓ここでリストを作成(z_minからz_maxまで、1mm間隔のZ座標のリストを生成)
     new_z_points = np.arange(z_min, z_max, 1.0)
-
     # 5. 曲線の方程式にリストを代入して点を求めるを使って、新しいZ座標に対応するX, Y座標を計算
     spline_x_points = f_x(new_z_points)  #スプライン補間した点列のx座標を格納
     spline_y_points = f_y(new_z_points)  #スプライン補間した点列のy座標を格納
@@ -104,21 +141,60 @@ def rotate_slice_in_place():
     # 6. 結果をSlicerのMarkupsノードとして表示
     output_node_name = slicer.mrmlScene.GenerateUniqueName("Interpolated_Points")
     markupsNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", output_node_name)
-
     # 点の表示設定を調整（点を小さく、ラベルは非表示に）
     displayNode = markupsNode.GetDisplayNode()
     displayNode.SetGlyphScale(0.5)
     displayNode.SetTextScale(0)
-
     # 生成した点群を一つずつ追加
     for i in range(len(new_z_points)):
         markupsNode.AddControlPoint([spline_x_points[i], spline_y_points[i], new_z_points[i]])
-
-    # カメラを生成した点群の中心に移動させる
-    # slicer.modules.markups.logic().JumpSlicesToNthPointInMarkup(markupsNode.GetID(), 0)
-
     print("\n--- 処理完了 ---")
     print(f"結果が '{output_node_name}' という名前でシーンに追加されました。")
+
+
+
+    # ***************************
+    # 脛骨前凌点をスプライン補間するプログラム
+    # ***************************
+    # .iloc[:, [1, 2, 3]] で7,8,9列目(インデックス1,2,3)をまとめて取得
+    tibia_coords_data = df.iloc[:, [6, 7, 8]]
+    # 分かりやすいように列名を'x', 'y', 'z'に設定
+    tibia_coords_data.columns = ['x', 'y', 'z']
+    # 不正なデータ（数値でないもの）を削除
+    tibia_coords_data = tibia_coords_data.apply(pd.to_numeric, errors='coerce').dropna()
+    if tibia_coords_data.empty:
+        raise ValueError("有効な数値座標データが見つかりませんでした。")
+    # 【重要】スプライン補間を行う前に、必ずZ座標でデータを並び替える
+    tibia_sorted_coords = tibia_coords_data.sort_values(by='z').to_numpy()
+    # print("ソートした脛骨前凌点：",tibia_sorted_coords)
+    # NumPy配列に変換
+    tibia_x_coords = tibia_sorted_coords[:, 0]
+    tibia_y_coords = tibia_sorted_coords[:, 1]
+    tibia_z_coords = tibia_sorted_coords[:, 2]
+    # 3. ここで3次スプライン補間する曲線の方程式を求める
+    # Z座標を基準に、XとYがどう変化するかをそれぞれ補間する
+    tibia_f_x = interp1d(tibia_z_coords, tibia_x_coords, kind='cubic', fill_value="extrapolate")
+    tibia_f_y = interp1d(tibia_z_coords, tibia_y_coords, kind='cubic', fill_value="extrapolate")
+    # 4. 元のデータの最小Z座標と最大Z座標を取得Z軸に対して1mm間隔の点列リストを作成
+    tibia_z_min = tibia_z_coords.min()
+    tibia_z_max = tibia_z_coords.max()
+    # ↓↓ここでリストを作成(z_minからz_maxまで、1mm間隔のZ座標のリストを生成)
+    tibia_new_z_points = np.arange(tibia_z_min, tibia_z_max, 1.0)
+    # 5. 曲線の方程式にリストを代入して点を求めるを使って、新しいZ座標に対応するX, Y座標を計算
+    tibia_spline_x_points = tibia_f_x(tibia_new_z_points)  #スプライン補間した点列のx座標を格納
+    tibia_spline_y_points = tibia_f_y(tibia_new_z_points)  #スプライン補間した点列のy座標を格納
+    # 6. 結果をSlicerのMarkupsノードとして表示
+    output_node_name = slicer.mrmlScene.GenerateUniqueName("Interpolated_Points")
+    markupsNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", output_node_name)
+    # 点の表示設定を調整（点を小さく、ラベルは非表示に）
+    displayNode = markupsNode.GetDisplayNode()
+    displayNode.SetGlyphScale(0.5)
+    displayNode.SetTextScale(0)
+    # 生成した点群を一つずつ追加
+    for i in range(len(tibia_new_z_points)):
+        markupsNode.AddControlPoint([tibia_spline_x_points[i], tibia_spline_y_points[i],  tibia_new_z_points[i]])
+
+  
 
     # # ***************************
     # # 直線方程式を求める関数
@@ -129,24 +205,20 @@ def rotate_slice_in_place():
         raise IndexError("エラー: Excelファイルに11行以上のデータがありません。")
     if df.shape[1] < 9:
         raise IndexError("エラー: Excelファイルに9列以上のデータがありません。")
-
     # 前縁の座標値を取得(iloc[行インデックス, 列インデックス] を使用)
     crest_maxZ_xyz = df.iloc[0, [6, 7, 8]].to_numpy()
     crest_minZ_xyz = df.iloc[9, [6, 7, 8]].to_numpy()
-
     # 取得した値を表示
     print("\n--- 処理結果 ---")
     print(f"1点目 (2行目の7,8,9列) の座標 (X, Y, Z): {crest_maxZ_xyz}")
     print(f"2点目 (11行目の7,8,9列) の座標 (X, Y, Z): {crest_minZ_xyz}")
-
     # 取得した値をSlicerの点として表示する例
     markupsNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLMarkupsFiducialNode", "前縁点")
     markupsNode.AddControlPoint(crest_maxZ_xyz)
     markupsNode.AddControlPoint(crest_minZ_xyz)
     #「方程式を計算する道具」を取り出して使う
     base_point, direction_vec = straight_line_equation.calculate_line_parameters(crest_minZ_xyz, crest_maxZ_xyz)
-    #「直線を表示する道具」を取り出して使う
-    line_node = straight_line_equation.display_line_in_slicer(crest_minZ_xyz, crest_maxZ_xyz, "前縁の3次元直線")
+    
 
     try:
         # 2. セグメンテーションを一時的なラベルマップボリュームに変換
@@ -172,10 +244,10 @@ def rotate_slice_in_place():
             # ベクトルの成分 = (終点のx - 始点のx, 終点のy - 始点のy)
             straight_line_vx = straight_line_x_points - spline_x_points[i]
             straight_line_vy = straight_line_y_points - spline_y_points[i]
+            
             # 2. ベクトルの成分(vx, vy)から角度を計算
             # atan2は、ベクトルの向きから正しい象限の角度を返してくれる
             straight_line_angle_rad = math.atan2(straight_line_vy, straight_line_vx)
-            
             # 3. ラジアンを度数法に変換して返す
             straight_line_angle_deg = math.degrees(straight_line_angle_rad)
             print("髄腔点と直線の角度：",straight_line_angle_deg)
@@ -183,8 +255,7 @@ def rotate_slice_in_place():
             print("スプライン補間した髄腔中心点：",spline_x_points[i],spline_y_points[i])
             print("直線上の点:",straight_line_x_points, straight_line_y_points)
 
-
-            # 3. あるz座標値からsegmentationの何スライス目に当たるかを計算
+            # 4. あるz座標値からsegmentationの何スライス目に当たるかを計算
             bounds = [0.0] * 6
             segmentationNode.GetRASBounds(bounds)
             if not (bounds[4] <= slice_value <= bounds[5]):
@@ -205,54 +276,49 @@ def rotate_slice_in_place():
                 raise ValueError(f"エラー: Z={slice_value}mm は計算の結果、範囲外のインデックスになりました。")
             # print(f"Z={slice_value}mm は {k_slice_index} 番目のスライスに相当します。")
 
-            slice_2d = volumeArray[k_slice_index, :, :]#ここでスライス画像を取得
-            
-            # ***********************************************
-            # 取得したスライス断面において前凌点を探索
-            # ***********************************************
-            # 基準点(髄腔中心点)のRAS座標を、ラベルマップのIJK座標（ピクセル番地）に変換
-            pointA_ras_vtk = [spline_x_points[i], spline_y_points[i], slice_value, 1]
-            pointA_ijk_vtk = rasToIjkMatrix.MultiplyPoint(pointA_ras_vtk)
-            # # 2Dスライス平面上での基準点Aのピクセル座標 [J, I]
-            point_a_pixel = np.array([pointA_ijk_vtk[1], pointA_ijk_vtk[0]])
-            # 4a. 形状を構成する全ピクセルの座標リスト [J, I] を取得
-            shape_pixel_coords = np.argwhere(slice_2d > 0)
-            if shape_pixel_coords.size == 0:
-                raise ValueError(f"Z={slice_value}mmのスライス上にセグメントが見つかりません。")
-            # 4b. 各ピクセルと点Aとの距離の2乗を計算 (NumPyで一括計算)
-            distances_sq = np.sum((shape_pixel_coords - point_a_pixel)**2, axis=1)
-            # 4c. 距離が最大となる点のインデックスを見つける
-            farthest_pixel_index_in_list = np.argmax(distances_sq)
-            # 4d. 最遠点のピクセル座標 [J, I] を取得
-            farthest_pixel_ji = shape_pixel_coords[farthest_pixel_index_in_list]   
-            # 5. 最遠点のピクセル座標(IJK)をワールド座標(RAS)に変換
-            farthest_point_ijk_vtk = [farthest_pixel_ji[1], farthest_pixel_ji[0], k_slice_index, 1] # I, J, K, 1 の順
-            farthest_point_ras_vtk = ijkToRasMatrix.MultiplyPoint(farthest_point_ijk_vtk)
-            farthest_point_ras = np.array(farthest_point_ras_vtk[:3])
-            #表示の関係で前後が反転しているので、x,y座標にマイナスをかけて新しい変数に格納
-            farthest_point_ras[:2] *= -1
-            tibia_point_ras = farthest_point_ras
-            print("脛骨前凌の点：",tibia_point_ras)
+            # 5. 髄腔中心点と前凌点を結んだベクトルの角度を求める
             # ベクトルの成分 = (前凌のx - 髄腔のx, 前凌のy - 髄腔のy)
-            tibia_vx = tibia_point_ras[0] - spline_x_points[i]
-            tibia_vy = tibia_point_ras[1] - spline_y_points[i]
-            # 2. ベクトルの成分(vx, vy)から角度を計算
+            tibia_vx = tibia_spline_x_points[i] - spline_x_points[i]
+            tibia_vy = tibia_spline_y_points[i] - spline_y_points[i]
+            # ベクトルの成分(vx, vy)から角度を計算
             # atan2は、ベクトルの向きから正しい象限の角度を返してくれる
             tibia_angle_rad = math.atan2(tibia_vy, tibia_vx)
-            # 3. ラジアンを度数法に変換して返す
+            # ラジアンを度数法に変換して返す
             tibia_angle_deg = math.degrees(tibia_angle_rad)
             print("髄腔点と前凌の角度：",tibia_angle_deg)
 
-            # *****************************  
-            # 回転中心を決めてなかった！！
-            # *****************************  
-            # 4. スライスを回転させる
-            ROTATION_DEG = tibia_angle_deg - straight_line_angle_deg
+            # 6. スライスを回転させる
+            slice_2d = volumeArray[k_slice_index, :, :]#ここでスライス画像を取得
+            # 右脚か左脚かで回転させる角度を変える
+            if(tibia_type == 0):
+              print('0が選択されているよ')
+              ROTATION_DEG = straight_line_angle_deg - tibia_angle_deg
+            else:
+              print('1が選択されているよ')
+              ROTATION_DEG = tibia_angle_deg - straight_line_angle_deg
             round_ROTATION_DEG = round(ROTATION_DEG, 2)
             print("回転させる角度：",round_ROTATION_DEG)
             print("---------------------------")
-            rotated_slice_2d = scipy.ndimage.rotate(slice_2d, round_ROTATION_DEG, reshape=False, mode='constant', cval=0)
-            volumeArray[k_slice_index, :, :] = rotated_slice_2d
+            # 基準点(髄腔中心点)のRAS座標を、ラベルマップのIJK座標（ピクセル番地）に変換
+            center_ras_vtk = [spline_x_points[i], spline_y_points[i], slice_value, 1]
+            center_ijk_vtk = rasToIjkMatrix.MultiplyPoint(center_ras_vtk)
+            # NumPyの座標系は [行, 列] (y, x) なので、中心座標の順序を合わせる
+            center_yx = np.array([center_ijk_vtk[1], center_ijk_vtk[0]])
+
+            # 7. アフィン変換を実行（以前のロジックと同じ）
+            angle_rad = np.deg2rad(round_ROTATION_DEG)
+            cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
+            rotation_matrix = np.array([[cos_a, -sin_a], [sin_a,  cos_a]])
+            offset = center_yx - np.dot(rotation_matrix, center_yx)
+            affine_slice_2d= affine_transform(
+                slice_2d,
+                matrix=rotation_matrix,
+                offset=offset,
+                output_shape=slice_2d.shape,
+                mode='constant',
+                cval=0
+            )
+            volumeArray[k_slice_index, :, :] = affine_slice_2d
             slicer.util.arrayFromVolumeModified(labelmapVolumeNode)
 
         # 5. 【最重要】編集済みのラベルマップを、元のセグメンテーションにインポートして上書き
@@ -277,8 +343,29 @@ def rotate_slice_in_place():
             slicer.mrmlScene.RemoveNode(labelmapVolumeNode)
         # 変更を確定
         segmentationNode.EndModify(False)
+  
+
+  # **************************************
+    # sclicerのapiを使って回転させるプログラム
+    # **************************************
+    ROTATION_ANGLE_DEG = 180
+    # 2. VTKを使って変換ルール(Transform)を作成
+    transform = vtk.vtkTransform()
+    # 原点を中心にZ軸周りで回転
+    # 平行移動の処理を省くことで、回転の中心はデフォルトで原点(0,0,0)になる
+    transform.RotateZ(ROTATION_ANGLE_DEG)
+    # # 3. 作成した変換を、新しいTransformノードとしてシーンに追加
+    transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "MyRotationTransform")
+    transformNode.SetMatrixTransformToParent(transform.GetMatrix())
+    # # 4. モデルに、このTransformノードを一時的に適用
+    segmentationNode.SetAndObserveTransformNodeID(transformNode.GetID())
+    # # 5. 【最重要】変換をモデルのジオメトリに「焼き付け(Harden)」て、恒久的な変更にする
+    logic = slicer.vtkSlicerTransformLogic()
+    logic.hardenTransform(segmentationNode)
+    print(f"--- もとに戻しました ---")
+    print("Dataモジュールからこのノードを右クリックしてエクスポートしてください。")
 
 # --- 関数の実行 ---
-rotate_slice_in_place()
+message_box()
 
 
