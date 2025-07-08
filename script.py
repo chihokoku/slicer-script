@@ -25,22 +25,55 @@ def message_box():
     # ダイアログに表示するメッセージ
     # ********************************
     # 1. メッセージボックスのインスタンスを作成
-    msgBox = qt.QMessageBox()
-    msgBox.setText("どちらの脚ですか？？")
-    msgBox.setWindowTitle("処理の確認")
+    msgBox1 = qt.QMessageBox()
+    msgBox1.setText("どちらの脚ですか？？")
+    msgBox1.setWindowTitle("処理の確認")
     # 2. カスタムボタンを追加
-    yesButton = msgBox.addButton("右脚", qt.QMessageBox.YesRole)
-    noButton = msgBox.addButton("左脚", qt.QMessageBox.NoRole)
+    yesButton = msgBox1.addButton("右脚", qt.QMessageBox.YesRole)
+    noButton = msgBox1.addButton("左脚", qt.QMessageBox.NoRole)
     # 3. ダイアログを実行
-    msgBox.exec_()
+    msgBox1.exec_()
     # 4. 押されたボタンに応じて処理を分岐
-    if msgBox.clickedButton() == yesButton:
-        tibia_type = 0
-        rotate_slice_in_place(tibia_type)
-    else:
-        print("")
-        tibia_type = 1
-        rotate_slice_in_place(tibia_type)
+    if msgBox1.clickedButton() == yesButton: #右脚の時の処理
+        msgBox2 = qt.QMessageBox()
+        msgBox2.setText("どのモデルを作成しますか？？")
+        msgBox2.setWindowTitle("処理の確認")
+        # 2. カスタムボタンを追加
+        yesButton = msgBox2.addButton("ねじれ無しモデル", qt.QMessageBox.YesRole)
+        noButton = msgBox2.addButton("内側にねじれ強調モデル", qt.QMessageBox.NoRole)
+        cancelButton = msgBox2.addButton("外側にねじれ強調モデル", qt.QMessageBox.RejectRole)
+        msgBox2.exec_()
+        if msgBox2.clickedButton() == yesButton:
+            tibia_type = 0
+            rotate_slice_in_place(tibia_type)
+        elif msgBox2.clickedButton() == noButton:
+            tibia_type = 1
+            rotate_slice_in_place(tibia_type)
+        else:
+            tibia_type = 2
+            rotate_slice_in_place(tibia_type)
+    else: #左脚が選択された時の処理
+        msgBox3 = qt.QMessageBox()
+        msgBox3.setText("どのモデルを作成しますか？？")
+        msgBox3.setWindowTitle("処理の確認")
+        # 2. カスタムボタンを追加
+        yesButton = msgBox3.addButton("ねじれ無しモデル", qt.QMessageBox.YesRole)
+        noButton = msgBox3.addButton("内側にねじれ強調モデル", qt.QMessageBox.NoRole)
+        cancelButton = msgBox3.addButton("外側にねじれ強調モデル", qt.QMessageBox.RejectRole)
+        msgBox3.exec_()
+        if msgBox3.clickedButton() == yesButton:
+            print("左脚でねじれ無しモデル")
+            tibia_type = 1
+            rotate_slice_in_place(tibia_type)
+        elif msgBox3.clickedButton() == noButton:
+            print("左脚で内側にねじれ強調モデル")
+            tibia_type = 0
+            rotate_slice_in_place(tibia_type)
+        else:
+            print("左脚で外側にねじれ強調モデル")
+            tibia_type = 3
+            rotate_slice_in_place(tibia_type)
+        
        
 
 
@@ -73,8 +106,7 @@ def rotate_slice_in_place(tibia_type):
     segmentationNode.SetAndObserveTransformNodeID(transformNode.GetID())
     # # 5. 【最重要】変換をモデルのジオメトリに「焼き付け(Harden)」て、恒久的な変更にする
     print("変換をモデルに焼き付けています...")
-    logic = slicer.vtkSlicerTransformLogic()
-    logic.hardenTransform(segmentationNode)
+    slicer.vtkSlicerTransformLogic().hardenTransform(segmentationNode)
     # print(f"回転が完了しました")
 
 
@@ -291,21 +323,30 @@ def rotate_slice_in_place(tibia_type):
             slice_2d = volumeArray[k_slice_index, :, :]#ここでスライス画像を取得
             # 右脚か左脚かで回転させる角度を変える
             if(tibia_type == 0):
-              print('0が選択されているよ')
               ROTATION_DEG = straight_line_angle_deg - tibia_angle_deg
-            else:
-              print('1が選択されているよ')
+            elif(tibia_type == 1):
               ROTATION_DEG = tibia_angle_deg - straight_line_angle_deg
+            elif(tibia_type == 2):
+              ROTATION_DEG = (straight_line_angle_deg - tibia_angle_deg) * 2
+            else:
+              ROTATION_DEG = (tibia_angle_deg - straight_line_angle_deg) * 2
             round_ROTATION_DEG = round(ROTATION_DEG, 2)
             print("回転させる角度：",round_ROTATION_DEG)
+            # 回転後の前凌の座標を求める
+            tibia_angle_radian = math.radians(round_ROTATION_DEG)
+            new_tibia_x_point = tibia_spline_x_points[i] * math.cos(tibia_angle_radian) - tibia_spline_y_points[i] * math.sin(tibia_angle_radian)
+            new_tibia_y_point = tibia_spline_x_points[i] * math.sin(tibia_angle_radian) + tibia_spline_y_points[i] * math.cos(tibia_angle_radian)
+            round_new_tibia_x_point = round(new_tibia_x_point, 2)
+            round_new_tibia_y_point = round(new_tibia_y_point, 2)
+            print("回転後の前凌座標:",round_new_tibia_x_point,round_new_tibia_y_point)
             print("---------------------------")
+            # 7. スライスを回転させるnew_tibia_x_point = 
             # 基準点(髄腔中心点)のRAS座標を、ラベルマップのIJK座標（ピクセル番地）に変換
             center_ras_vtk = [spline_x_points[i], spline_y_points[i], slice_value, 1]
             center_ijk_vtk = rasToIjkMatrix.MultiplyPoint(center_ras_vtk)
             # NumPyの座標系は [行, 列] (y, x) なので、中心座標の順序を合わせる
             center_yx = np.array([center_ijk_vtk[1], center_ijk_vtk[0]])
-
-            # 7. アフィン変換を実行（以前のロジックと同じ）
+            # アフィン変換を実行（以前のロジックと同じ）
             angle_rad = np.deg2rad(round_ROTATION_DEG)
             cos_a, sin_a = np.cos(angle_rad), np.sin(angle_rad)
             rotation_matrix = np.array([[cos_a, -sin_a], [sin_a,  cos_a]])
