@@ -63,11 +63,11 @@ def message_box():
         msgBox3.exec_()
         if msgBox3.clickedButton() == yesButton:
             print("左脚でねじれ無しモデル")
-            tibia_type = 1
+            tibia_type = 0
             rotate_slice_in_place(tibia_type)
         elif msgBox3.clickedButton() == noButton:
             print("左脚で内側にねじれ強調モデル")
-            tibia_type = 0
+            tibia_type = 1
             rotate_slice_in_place(tibia_type)
         else:
             print("左脚で外側にねじれ強調モデル")
@@ -327,20 +327,25 @@ def rotate_slice_in_place(tibia_type):
             elif(tibia_type == 1):
               ROTATION_DEG = tibia_angle_deg - straight_line_angle_deg
             elif(tibia_type == 2):
-              ROTATION_DEG = (straight_line_angle_deg - tibia_angle_deg) * 2
+              ROTATION_DEG = (straight_line_angle_deg - tibia_angle_deg) * 1.5
             else:
-              ROTATION_DEG = (tibia_angle_deg - straight_line_angle_deg) * 2
+              ROTATION_DEG = (tibia_angle_deg - straight_line_angle_deg) * 1.5
             round_ROTATION_DEG = round(ROTATION_DEG, 2)
             print("回転させる角度：",round_ROTATION_DEG)
             # 回転後の前凌の座標を求める
+            dx = tibia_spline_x_points[i] - spline_x_points[i]
+            dy = tibia_spline_y_points[i] - spline_y_points[i]
             tibia_angle_radian = math.radians(round_ROTATION_DEG)
-            new_tibia_x_point = tibia_spline_x_points[i] * math.cos(tibia_angle_radian) - tibia_spline_y_points[i] * math.sin(tibia_angle_radian)
-            new_tibia_y_point = tibia_spline_x_points[i] * math.sin(tibia_angle_radian) + tibia_spline_y_points[i] * math.cos(tibia_angle_radian)
+            rotate_dx = dx * math.cos(tibia_angle_radian) - dy * math.sin(tibia_angle_radian)
+            rotate_dy = dx * math.sin(tibia_angle_radian) + dy * math.cos(tibia_angle_radian)
+            new_tibia_x_point = rotate_dx + spline_x_points[i]
+            new_tibia_y_point = rotate_dy + spline_y_points[i]
             round_new_tibia_x_point = round(new_tibia_x_point, 2)
             round_new_tibia_y_point = round(new_tibia_y_point, 2)
+            print("回転前の前凌座標:",tibia_spline_x_points[i],tibia_spline_y_points[i])
             print("回転後の前凌座標:",round_new_tibia_x_point,round_new_tibia_y_point)
             print("---------------------------")
-            # 7. スライスを回転させるnew_tibia_x_point = 
+            # 7. スライスを回転させる
             # 基準点(髄腔中心点)のRAS座標を、ラベルマップのIJK座標（ピクセル番地）に変換
             center_ras_vtk = [spline_x_points[i], spline_y_points[i], slice_value, 1]
             center_ijk_vtk = rasToIjkMatrix.MultiplyPoint(center_ras_vtk)
@@ -372,7 +377,6 @@ def rotate_slice_in_place(tibia_type):
 
         print(f"--- 処理完了 ---")
         print(f"'{segmentationNode.GetName()}' が正常に更新されました。")
-        print("Dataモジュールからこのノードを右クリックしてエクスポートしてください。")
 
     except Exception as e:
         # もし途中でエラーが起きても、変更を元に戻す
@@ -403,7 +407,6 @@ def rotate_slice_in_place(tibia_type):
     # # 5. 【最重要】変換をモデルのジオメトリに「焼き付け(Harden)」て、恒久的な変更にする
     logic = slicer.vtkSlicerTransformLogic()
     logic.hardenTransform(segmentationNode)
-    print(f"--- もとに戻しました ---")
     print("Dataモジュールからこのノードを右クリックしてエクスポートしてください。")
 
 # --- 関数の実行 ---
