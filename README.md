@@ -2,7 +2,7 @@
 
 1. vs code に 3D slicer で実行したい処理を記述
 2. 3D slicer を起動 →view→python console
-3. コンソールに下記を記述
+3. コンソールに下記を記述 ↓↓↓↓(macOS 用)
    exec(open("/Users/m.saito/Desktop/slicer-script/script.py" , encoding="utf-8").read())
 4. slicer の python script に下記を記述(pandas のインストール※一度だけ行えば良い)
    pip_install('pandas openpyxl')
@@ -13,3 +13,4 @@
 
 - エクスポートする際は必ず stl 形式で出力(obj 形式だと変更前のモデルが残ってしまうため)
 - 最初の実行では落ちることがよくある
+- 左脚をのエクセルデータを読み込ませる時は、必ず x 座標を負の値にする
