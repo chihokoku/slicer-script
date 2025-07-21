@@ -25,55 +25,24 @@ def message_box():
     # ダイアログに表示するメッセージ
     # ********************************
     # 1. メッセージボックスのインスタンスを作成
-    msgBox1 = qt.QMessageBox()
-    msgBox1.setText("どちらの脚ですか？？")
-    msgBox1.setWindowTitle("処理の確認")
+    msgBox2 = qt.QMessageBox()
+    msgBox2.setText("どのモデルを作成しますか？？")
+    msgBox2.setWindowTitle("処理の確認")
     # 2. カスタムボタンを追加
-    yesButton = msgBox1.addButton("右脚", qt.QMessageBox.YesRole)
-    noButton = msgBox1.addButton("左脚", qt.QMessageBox.NoRole)
-    # 3. ダイアログを実行
-    msgBox1.exec_()
-    # 4. 押されたボタンに応じて処理を分岐
-    if msgBox1.clickedButton() == yesButton: #右脚の時の処理
-        msgBox2 = qt.QMessageBox()
-        msgBox2.setText("どのモデルを作成しますか？？")
-        msgBox2.setWindowTitle("処理の確認")
-        # 2. カスタムボタンを追加
-        yesButton = msgBox2.addButton("ねじれ無しモデル", qt.QMessageBox.YesRole)
-        noButton = msgBox2.addButton("内側にねじれ強調モデル", qt.QMessageBox.NoRole)
-        cancelButton = msgBox2.addButton("外側にねじれ強調モデル", qt.QMessageBox.RejectRole)
-        msgBox2.exec_()
-        if msgBox2.clickedButton() == yesButton:
-            tibia_type = 0
-            rotate_slice_in_place(tibia_type)
-        elif msgBox2.clickedButton() == noButton:
-            tibia_type = 1
-            rotate_slice_in_place(tibia_type)
-        else:
-            tibia_type = 2
-            rotate_slice_in_place(tibia_type)
-    else: #左脚が選択された時の処理
-        msgBox3 = qt.QMessageBox()
-        msgBox3.setText("どのモデルを作成しますか？？")
-        msgBox3.setWindowTitle("処理の確認")
-        # 2. カスタムボタンを追加
-        yesButton = msgBox3.addButton("ねじれ無しモデル", qt.QMessageBox.YesRole)
-        noButton = msgBox3.addButton("内側にねじれ強調モデル", qt.QMessageBox.NoRole)
-        cancelButton = msgBox3.addButton("外側にねじれ強調モデル", qt.QMessageBox.RejectRole)
-        msgBox3.exec_()
-        if msgBox3.clickedButton() == yesButton:
-            print("左脚でねじれ無しモデル")
-            tibia_type = 0
-            rotate_slice_in_place(tibia_type)
-        elif msgBox3.clickedButton() == noButton:
-            print("左脚で内側にねじれ強調モデル")
-            tibia_type = 1
-            rotate_slice_in_place(tibia_type)
-        else:
-            print("左脚で外側にねじれ強調モデル")
-            tibia_type = 3
-            rotate_slice_in_place(tibia_type)
-        
+    yesButton = msgBox2.addButton("ねじれ無しモデル", qt.QMessageBox.YesRole)
+    noButton = msgBox2.addButton("ねじれ強調モデル", qt.QMessageBox.NoRole)
+    cancelButton = msgBox2.addButton("外側にねじれ強調モデル", qt.QMessageBox.RejectRole)
+    msgBox2.exec_()
+    if msgBox2.clickedButton() == yesButton:
+        tibia_type = 0
+        rotate_slice_in_place(tibia_type)
+    elif msgBox2.clickedButton() == noButton:
+        tibia_type = 1
+        rotate_slice_in_place(tibia_type)
+    else:
+        tibia_type = 2
+        rotate_slice_in_place(tibia_type)
+    
        
 
 
@@ -328,8 +297,6 @@ def rotate_slice_in_place(tibia_type):
               ROTATION_DEG = tibia_angle_deg - straight_line_angle_deg
             elif(tibia_type == 2):
               ROTATION_DEG = (straight_line_angle_deg - tibia_angle_deg) * 1.5
-            else:
-              ROTATION_DEG = (tibia_angle_deg - straight_line_angle_deg) * 1.5
             round_ROTATION_DEG = round(ROTATION_DEG, 2)
             print("回転させる角度：",round_ROTATION_DEG)
             # 回転後の前凌の座標を求める
