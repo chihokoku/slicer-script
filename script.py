@@ -106,6 +106,12 @@ def rotate_slice_in_place(tibia_type):
     coords_data = coords_data.apply(pd.to_numeric, errors='coerce').dropna()
     if coords_data.empty:
         raise ValueError("有効な数値座標データが見つかりませんでした。")
+    
+    # 一旦表示してみる
+    print('excelのz座標')
+    print(coords_data['z'].iloc[0])
+
+
     # 【重要】スプライン補間を行う前に、必ずZ座標でデータを並び替える
     sorted_coords = coords_data.sort_values(by='z').to_numpy()
     # NumPy配列に変換
@@ -220,6 +226,11 @@ def rotate_slice_in_place(tibia_type):
     #「方程式を計算する道具」を取り出して使う
     base_point, direction_vec = straight_line_equation.calculate_line_parameters(crest_minZ_xyz, crest_maxZ_xyz)
     
+    # 測定する脛骨前縁の座標を格納する変数
+    anterior_border_of_tibia = []
+    list = [tibia_coords_data['x'].iloc[0],tibia_coords_data['y'].iloc[0],tibia_coords_data['z'].iloc[0]]
+    anterior_border_of_tibia.append(list)
+
 
     try:
         # 2. セグメンテーションを一時的なラベルマップボリュームに変換
@@ -311,6 +322,15 @@ def rotate_slice_in_place(tibia_type):
             round_new_tibia_y_point = round(new_tibia_y_point, 2)
             print("回転前の前凌座標:",tibia_spline_x_points[i],tibia_spline_y_points[i])
             print("回転後の前凌座標:",round_new_tibia_x_point,round_new_tibia_y_point)
+
+            # 測定する場所のz座標がきたらリストに追加する
+            if slice_value in coords_data['z'].values:
+              print(f"値 {slice_value} は、Z座標のリストの中に存在します。")
+              list = [round_new_tibia_x_point, round_new_tibia_y_point, slice_value]
+              anterior_border_of_tibia.append(list)
+              
+
+
             print("---------------------------")
             # 7. スライスを回転させる
             # 基準点(髄腔中心点)のRAS座標を、ラベルマップのIJK座標（ピクセル番地）に変換
@@ -344,6 +364,13 @@ def rotate_slice_in_place(tibia_type):
 
         print(f"--- 処理完了 ---")
         print(f"'{segmentationNode.GetName()}' が正常に更新されました。")
+
+        print('----回転後の測定位置------')
+        list = [tibia_coords_data['x'].iloc[9], tibia_coords_data['y'].iloc[9], tibia_coords_data['z'].iloc[9]]
+        anterior_border_of_tibia.append(list)
+        for item in anterior_border_of_tibia:
+        # 取り出した item を1行ずつ表示する
+          print(*item) #*により[]が表示されなくなる
 
     except Exception as e:
         # もし途中でエラーが起きても、変更を元に戻す
