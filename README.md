@@ -2,12 +2,12 @@
 
 1. vs code に 3D slicer で実行したい処理を記述
 2. 3D slicer を起動 →view→python console
-3. コンソールに下記を記述 ↓↓↓↓(macOS 用)
-   exec(open("/Users/m.saito/Desktop/slicer-script/script.py" , encoding="utf-8").read())
-4. slicer の python script に下記を記述(pandas のインストール※一度だけ行えば良い)
+3. slicer の python script に下記を記述(pandas のインストール※一度だけ行えば良い)
    pip_install('pandas openpyxl')
    下記が出れば完了
    Successfully installed et-xmlfile-2.0.0 openpyxl-3.1.5 pandas-2.3.0 pytz-2025.2 tzdata-2025.2
+4. コンソールに下記を記述 ↓↓↓↓(macOS 用)
+   exec(open("/Users/m.saito/Desktop/slicer-script/script.py" , encoding="utf-8").read())
 
 ## 注意
 
