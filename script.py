@@ -228,7 +228,7 @@ def rotate_slice_in_place(tibia_type):
     
     # 測定する脛骨前縁の座標を格納する変数
     anterior_border_of_tibia = []
-    list = [tibia_coords_data['x'].iloc[0],tibia_coords_data['y'].iloc[0],tibia_coords_data['z'].iloc[0]]
+    list = [round(tibia_coords_data['x'].iloc[0],2),round(tibia_coords_data['y'].iloc[0],2),round(tibia_coords_data['z'].iloc[0],2)]
     anterior_border_of_tibia.append(list)
 
 
@@ -366,7 +366,7 @@ def rotate_slice_in_place(tibia_type):
         print(f"'{segmentationNode.GetName()}' が正常に更新されました。")
 
         print('----回転後の測定位置------')
-        list = [tibia_coords_data['x'].iloc[9], tibia_coords_data['y'].iloc[9], tibia_coords_data['z'].iloc[9]]
+        list = [round(tibia_coords_data['x'].iloc[9],2), round(tibia_coords_data['y'].iloc[9],2), round(tibia_coords_data['z'].iloc[9],2)]
         anterior_border_of_tibia.append(list)
         for item in anterior_border_of_tibia:
         # 取り出した item を1行ずつ表示する
