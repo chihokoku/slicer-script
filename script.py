@@ -368,8 +368,11 @@ def rotate_slice_in_place(tibia_type):
         print('----回転後の測定位置------')
         list = [round(tibia_coords_data['x'].iloc[9],2), round(tibia_coords_data['y'].iloc[9],2), round(tibia_coords_data['z'].iloc[9],2)]
         anterior_border_of_tibia.append(list)
-        for item in anterior_border_of_tibia:
+        # ************35%〜70%部分が逆順に表示させる*****************
+        anterior_border_of_tibia[1:9] = anterior_border_of_tibia[1:9][::-1]
+        # ***********************************************************
         # 取り出した item を1行ずつ表示する
+        for item in anterior_border_of_tibia:
           print(*item) #*により[]が表示されなくなる
 
     except Exception as e:
