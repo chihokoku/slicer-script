@@ -34,9 +34,11 @@ def message_box():
     cancelButton = msgBox2.addButton("外側にねじれ強調モデル", qt.QMessageBox.RejectRole)
     msgBox2.exec_()
     if msgBox2.clickedButton() == yesButton:
+        print("ねじれ無しモデルを作成します")
         tibia_type = 0
         rotate_slice_in_place(tibia_type)
     elif msgBox2.clickedButton() == noButton:
+        print("ねじれ強調モデルを作成します")
         tibia_type = 1
         rotate_slice_in_place(tibia_type)
     else:
@@ -47,11 +49,15 @@ def message_box():
 
 
 def rotate_slice_in_place(tibia_type):
-    print('どちらの脛骨？：',tibia_type)
+    # 0. segment editorを初期化する
+    slicer.util.selectModule("SegmentEditor")
     # 1. 準備：編集対象のセグメンテーションノードを取得
     segmentEditorWidget = slicer.modules.segmenteditor.widgetRepresentation().self().editor
+    if not segmentEditorWidget:
+        print('segmentEditorWidgetがありません')
+        return
     segmentationNode = segmentEditorWidget.mrmlSegmentEditorNode().GetSegmentationNode()
-    if not segmentationNode:
+    if segmentationNode is None:
         print("エラー: Segment Editorでセグメンテーションが選択されていません。")
         return 
     print(f"処理対象ノード: '{segmentationNode.GetName()}'")
@@ -59,23 +65,23 @@ def rotate_slice_in_place(tibia_type):
     segmentationNode.StartModify()
 
 
-    # **************************************
-    # sclicerのapiを使って回転させるプログラム
-    # **************************************
-    ROTATION_ANGLE_DEG = 180
-    # 2. VTKを使って変換ルール(Transform)を作成
-    transform = vtk.vtkTransform()
-    # 原点を中心にZ軸周りで回転
-    # 平行移動の処理を省くことで、回転の中心はデフォルトで原点(0,0,0)になる
-    transform.RotateZ(ROTATION_ANGLE_DEG)
-    # # 3. 作成した変換を、新しいTransformノードとしてシーンに追加
-    transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "MyRotationTransform")
-    transformNode.SetMatrixTransformToParent(transform.GetMatrix())
-    # # 4. モデルに、このTransformノードを一時的に適用
-    segmentationNode.SetAndObserveTransformNodeID(transformNode.GetID())
-    # # 5. 【最重要】変換をモデルのジオメトリに「焼き付け(Harden)」て、恒久的な変更にする
-    print("変換をモデルに焼き付けています...")
-    slicer.vtkSlicerTransformLogic().hardenTransform(segmentationNode)
+    # # **************************************
+    # # sclicerのapiを使って回転させるプログラム
+    # # **************************************
+    # ROTATION_ANGLE_DEG = 180
+    # # 2. VTKを使って変換ルール(Transform)を作成
+    # transform = vtk.vtkTransform()
+    # # 原点を中心にZ軸周りで回転
+    # # 平行移動の処理を省くことで、回転の中心はデフォルトで原点(0,0,0)になる
+    # transform.RotateZ(ROTATION_ANGLE_DEG)
+    # # # 3. 作成した変換を、新しいTransformノードとしてシーンに追加
+    # transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "MyRotationTransform")
+    # transformNode.SetMatrixTransformToParent(transform.GetMatrix())
+    # # # 4. モデルに、このTransformノードを一時的に適用
+    # segmentationNode.SetAndObserveTransformNodeID(transformNode.GetID())
+    # # # 5. 【最重要】変換をモデルのジオメトリに「焼き付け(Harden)」て、恒久的な変更にする
+    # print("変換をモデルに焼き付けています...")
+    # slicer.vtkSlicerTransformLogic().hardenTransform(segmentationNode)
     # print(f"回転が完了しました")
 
 
@@ -233,6 +239,25 @@ def rotate_slice_in_place(tibia_type):
 
 
     try:
+        # **************************************
+        # sclicerのapiを使って回転させるプログラム
+        # **************************************
+        ROTATION_ANGLE_DEG = 180
+        # 2. VTKを使って変換ルール(Transform)を作成
+        transform = vtk.vtkTransform()
+        # 原点を中心にZ軸周りで回転
+        # 平行移動の処理を省くことで、回転の中心はデフォルトで原点(0,0,0)になる
+        transform.RotateZ(ROTATION_ANGLE_DEG)
+        # # 3. 作成した変換を、新しいTransformノードとしてシーンに追加
+        transformNode = slicer.mrmlScene.AddNewNodeByClass("vtkMRMLLinearTransformNode", "MyRotationTransform")
+        transformNode.SetMatrixTransformToParent(transform.GetMatrix())
+        # # 4. モデルに、このTransformノードを一時的に適用
+        segmentationNode.SetAndObserveTransformNodeID(transformNode.GetID())
+        # # 5. 【最重要】変換をモデルのジオメトリに「焼き付け(Harden)」て、恒久的な変更にする
+        print("変換をモデルに焼き付けています...")
+        slicer.vtkSlicerTransformLogic().hardenTransform(segmentationNode)
+        
+
         # 2. セグメンテーションを一時的なラベルマップボリュームに変換
         print("セグメンテーションをラベルマップに変換中...")
         # 参照ボリュームとして、シーン内の最初のボリュームを使用（より安定）
@@ -365,6 +390,7 @@ def rotate_slice_in_place(tibia_type):
         print(f"--- 処理完了 ---")
         print(f"'{segmentationNode.GetName()}' が正常に更新されました。")
 
+
         print('----回転後の測定位置------')
         list = [round(tibia_coords_data['x'].iloc[9],2), round(tibia_coords_data['y'].iloc[9],2), round(tibia_coords_data['z'].iloc[9],2)]
         anterior_border_of_tibia.append(list)
@@ -404,7 +430,11 @@ def rotate_slice_in_place(tibia_type):
     # # 5. 【最重要】変換をモデルのジオメトリに「焼き付け(Harden)」て、恒久的な変更にする
     logic = slicer.vtkSlicerTransformLogic()
     logic.hardenTransform(segmentationNode)
-    print("Dataモジュールからこのノードを右クリックしてエクスポートしてください。")
+    print("このノードを右クリックしてエクスポートしてください。")
+    if(tibia_type == 0):
+        print("ねじれ無しモデルを作成しました")
+    elif(tibia_type == 1):
+        print("ねじれ強調モデルを作成しました")
 
 # --- 関数の実行 ---
 message_box()
